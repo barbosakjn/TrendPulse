@@ -11,6 +11,15 @@ TrendPulse is a trend discovery platform for SaaS and digital products. It aggre
 - **Data Fetching**: TanStack Query
 
 ## Recent Changes (November 30, 2025)
+### Google Trends Fix
+- Migrated from `pytrends` to `trendspyg` library (pytrends was archived and returning 404 errors)
+- Google Trends trending searches now work via RSS feed API
+- Keyword interest feature temporarily unavailable (limitation of new library)
+- Added deployment shell scripts to fix bash syntax errors
+
+### Security Fixes
+- Removed unused `decode_token()` function with `verify=False` (security vulnerability)
+
 ### Initial Replit Setup
 1. Installed Python 3.11 and Node.js 20 modules
 2. Created PostgreSQL database using Replit's built-in database
@@ -70,8 +79,9 @@ Both workflows start automatically:
 - SQLAlchemy, Alembic, psycopg (database ORM and migrations)
 - Pydantic, pydantic-settings (data validation and configuration)
 - python-jose, argon2-cffi (authentication and security)
-- pytrends, praw, google-api-python-client (data collection services)
-- pandas, numpy (data processing)
+- trendspyg (Google Trends data via RSS feed - replaces archived pytrends)
+- praw, google-api-python-client (data collection services)
+- pandas (data processing)
 
 ### Frontend
 - Next.js 14, React 18 (framework)
