@@ -69,5 +69,5 @@ externalPort = 3000
 
 [deployment]
 deploymentTarget = "vm"
-run = ["bash", "-c", "cd backend && uvicorn app.main:app --host 0.0.0.0 --port 8000 & cd frontend && npm run start"]
-build = ["bash", "-c", "cd frontend && npm run build && cd ../backend && pip install -r requirements.txt && alembic upgrade head"]
+run = ["bash", "-c", "cd backend && uvicorn app.main:app --host 0.0.0.0 --port 8000 & cd frontend && npm start"]
+build = ["bash", "-c", "cd frontend && npm run build && cd ../backend && pip install -r requirements.txt"]
