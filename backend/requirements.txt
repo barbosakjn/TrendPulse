@@ -8,3 +8,5 @@ python-multipart
 sqlalchemy
 python-dotenv
 argon2-cffi
+trendspyg
+pandas
