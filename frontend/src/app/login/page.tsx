@@ -1,3 +1,5 @@
+'use client';
+
 import LoginForm from '@/components/auth/LoginForm';
 import { TrendingUp } from 'lucide-react';
 import Link from 'next/link';
