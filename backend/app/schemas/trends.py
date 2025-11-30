@@ -132,7 +132,11 @@ class ErrorResponse(BaseModel):
 # ============================================================================
 
 class YouTubeTrendingRequest(BaseModel):
-    """Request schema for YouTube trending videos."""
+    """Request schema for YouTube trending videos or search."""
+    action: str = Field(
+        default="trending_videos",
+        description="Action to perform: 'trending_videos' or 'search'"
+    )
     country: str = Field(
         default="US",
         description="ISO 3166-1 alpha-2 country code (e.g., 'US', 'BR', 'GB')"
@@ -140,6 +144,10 @@ class YouTubeTrendingRequest(BaseModel):
     category: Optional[str] = Field(
         default=None,
         description="Video category ID (e.g., '10' for Music, '20' for Gaming, '28' for Science & Technology)"
+    )
+    query: Optional[str] = Field(
+        default=None,
+        description="Search query/keyword (required for 'search' action)"
     )
     max_results: int = Field(
         default=20,
@@ -187,11 +195,12 @@ class YouTubeVideo(BaseModel):
 
 
 class YouTubeTrendingResponse(BaseModel):
-    """Response schema for YouTube trending videos."""
+    """Response schema for YouTube trending videos or search results."""
     success: bool = Field(..., description="Whether the request was successful")
-    country: str = Field(..., description="Country code used")
+    country: Optional[str] = Field(None, description="Country code used (for trending)")
     category: Optional[str] = Field(None, description="Category ID used (if any)")
-    videos: List[YouTubeVideo] = Field(..., description="List of trending videos")
+    query: Optional[str] = Field(None, description="Search query (for search results)")
+    videos: List[YouTubeVideo] = Field(..., description="List of videos")
     count: int = Field(..., description="Number of videos returned")
     max_results: int = Field(..., description="Maximum results requested")
     timestamp: str = Field(..., description="ISO timestamp of when data was fetched")

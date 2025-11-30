@@ -223,5 +223,159 @@ class YouTubeService:
             }
 
 
+    def search_videos(
+        self,
+        query: str,
+        country: str = 'US',
+        max_results: int = 10,
+        order: str = 'relevance'
+    ) -> Dict[str, Any]:
+        """
+        Search videos by keyword.
+
+        Args:
+            query: Search query/keyword
+            country: ISO 3166-1 alpha-2 country code (e.g., 'US', 'BR')
+            max_results: Number of videos to return (1-50, default: 10)
+            order: Sort order - 'relevance', 'date', 'viewCount', 'rating'
+
+        Returns:
+            Dict containing search results and metadata
+        """
+        if not self.api_key:
+            return {
+                "success": False,
+                "query": query,
+                "error": "API key not configured",
+                "message": "YouTube API key is not set. Please configure GOOGLE_API_KEY in secrets.",
+                "videos": [],
+                "count": 0,
+                "max_results": max_results,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+
+        if not self.youtube:
+            self._initialize_client()
+
+        try:
+            logger.info(f"Searching YouTube for: {query}")
+
+            max_results = max(1, min(max_results, 50))
+
+            search_request = self.youtube.search().list(
+                part='snippet',
+                q=query,
+                type='video',
+                regionCode=country,
+                maxResults=max_results,
+                order=order
+            )
+            search_response = search_request.execute()
+
+            video_ids = [item['id']['videoId'] for item in search_response.get('items', [])]
+            
+            if not video_ids:
+                return {
+                    "success": True,
+                    "query": query,
+                    "videos": [],
+                    "count": 0,
+                    "max_results": max_results,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+
+            videos_request = self.youtube.videos().list(
+                part='snippet,contentDetails,statistics',
+                id=','.join(video_ids)
+            )
+            videos_response = videos_request.execute()
+
+            videos = []
+            for item in videos_response.get('items', []):
+                snippet = item.get('snippet', {})
+                statistics = item.get('statistics', {})
+                content_details = item.get('contentDetails', {})
+
+                video_data = {
+                    'video_id': item.get('id'),
+                    'title': snippet.get('title'),
+                    'description': snippet.get('description', '')[:500],
+                    'channel': {
+                        'id': snippet.get('channelId'),
+                        'title': snippet.get('channelTitle')
+                    },
+                    'thumbnail': {
+                        'default': snippet.get('thumbnails', {}).get('default', {}).get('url'),
+                        'medium': snippet.get('thumbnails', {}).get('medium', {}).get('url'),
+                        'high': snippet.get('thumbnails', {}).get('high', {}).get('url'),
+                        'standard': snippet.get('thumbnails', {}).get('standard', {}).get('url'),
+                        'maxres': snippet.get('thumbnails', {}).get('maxres', {}).get('url')
+                    },
+                    'published_at': snippet.get('publishedAt'),
+                    'category_id': snippet.get('categoryId'),
+                    'tags': snippet.get('tags', [])[:10],
+                    'duration': content_details.get('duration'),
+                    'statistics': {
+                        'view_count': int(statistics.get('viewCount', 0)),
+                        'like_count': int(statistics.get('likeCount', 0)),
+                        'comment_count': int(statistics.get('commentCount', 0))
+                    },
+                    'url': f"https://www.youtube.com/watch?v={item.get('id')}"
+                }
+                videos.append(video_data)
+
+            result = {
+                "success": True,
+                "query": query,
+                "videos": videos,
+                "count": len(videos),
+                "max_results": max_results,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+
+            logger.info(f"Successfully found {len(videos)} videos for query: {query}")
+            return result
+
+        except HttpError as e:
+            error_message = str(e)
+            logger.error(f"YouTube API error during search: {error_message}")
+
+            if e.resp.status == 403:
+                return {
+                    "success": False,
+                    "query": query,
+                    "error": "Quota exceeded or forbidden",
+                    "message": "YouTube API quota exceeded or access forbidden.",
+                    "videos": [],
+                    "count": 0,
+                    "max_results": max_results,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+            else:
+                return {
+                    "success": False,
+                    "query": query,
+                    "error": "API request failed",
+                    "message": error_message,
+                    "videos": [],
+                    "count": 0,
+                    "max_results": max_results,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+
+        except Exception as e:
+            logger.error(f"Unexpected error searching YouTube: {str(e)}")
+            return {
+                "success": False,
+                "query": query,
+                "error": "Internal error",
+                "message": str(e),
+                "videos": [],
+                "count": 0,
+                "max_results": max_results,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+
+
 # Global instance
 youtube_service = YouTubeService()

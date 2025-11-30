@@ -181,21 +181,26 @@ export default function DashboardPage() {
     }
   };
 
-  const searchYouTube = async () => {
+  const searchYouTube = async (query?: string) => {
     setSourceLoading('youtube', true);
     setSourceError('youtube', null);
 
     try {
+      const requestBody = query 
+        ? { action: 'search', query, country: 'US', max_results: 10 }
+        : { action: 'trending_videos', country: 'US', max_results: 10 };
+
       const response = await fetch('/api/trends/youtube', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ country: 'US', max_results: 10 })
+        body: JSON.stringify(requestBody)
       });
 
       const data = await response.json();
       
       if (response.ok && data.success && data.videos) {
         setYoutubeVideos(data.videos);
+        if (query) setSearchedKeyword(query);
       } else {
         setSourceError('youtube', data.message || 'YouTube API requires an API key. Configure GOOGLE_API_KEY in secrets.');
       }
@@ -270,7 +275,7 @@ export default function DashboardPage() {
         searchGoogle(searchQuery);
         break;
       case 'youtube':
-        searchYouTube();
+        searchYouTube(searchQuery);
         break;
       case 'reddit':
         searchReddit(searchQuery);
@@ -287,7 +292,7 @@ export default function DashboardPage() {
       setSearchQuery(defaultQuery);
       switch (source) {
         case 'youtube':
-          searchYouTube();
+          searchYouTube(defaultQuery);
           break;
         case 'reddit':
           searchReddit(defaultQuery);
@@ -689,7 +694,7 @@ export default function DashboardPage() {
               </div>
 
               <div className="flex gap-2 mb-4 flex-wrap">
-                {(['exa', 'google', 'reddit'] as DataSource[]).map((source) => (
+                {(['exa', 'google', 'youtube', 'reddit'] as DataSource[]).map((source) => (
                   <button
                     key={source}
                     onClick={() => setActiveSource(source)}
@@ -715,6 +720,8 @@ export default function DashboardPage() {
                       ? 'Enter subreddit name (e.g., technology)' 
                       : activeSource === 'google'
                       ? 'Enter keyword to analyze'
+                      : activeSource === 'youtube'
+                      ? 'Search YouTube videos (e.g., AI trends)'
                       : 'What trends are you looking for?'
                   }
                   className="flex-1 px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
@@ -734,6 +741,7 @@ export default function DashboardPage() {
 
               <p className="text-sm text-slate-500">
                 {activeSource === 'google' && 'Analyze keyword interest over time on Google Trends'}
+                {activeSource === 'youtube' && 'Search YouTube videos by keyword'}
                 {activeSource === 'reddit' && 'Get hot posts from any subreddit'}
                 {activeSource === 'exa' && 'AI-powered web search for trends and insights'}
               </p>

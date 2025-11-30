@@ -226,44 +226,68 @@ async def get_google_trends(request: GoogleTrendsRequest):
 )
 async def get_youtube_trending(request: YouTubeTrendingRequest):
     """
-    Get trending videos from YouTube.
+    Get trending videos or search videos from YouTube.
+
+    **Actions:**
+    - `trending_videos`: Get trending videos for a country/category
+    - `search`: Search videos by keyword
 
     **Parameters:**
+    - `action`: 'trending_videos' or 'search'
     - `country`: ISO 3166-1 alpha-2 country code (e.g., 'US', 'BR', 'GB')
-    - `category`: Optional video category ID:
-      - `10`: Music
-      - `20`: Gaming
-      - `22`: People & Blogs
-      - `23`: Comedy
-      - `24`: Entertainment
-      - `25`: News & Politics
-      - `26`: Howto & Style
-      - `27`: Education
-      - `28`: Science & Technology
+    - `category`: Optional video category ID (for trending)
+    - `query`: Search keyword (required for search action)
     - `max_results`: Number of videos to return (1-50, default: 20)
 
-    **Example:**
+    **Examples:**
+    
+    Trending Videos:
     ```json
     {
+        "action": "trending_videos",
         "country": "US",
-        "category": "28",
+        "max_results": 10
+    }
+    ```
+
+    Search Videos:
+    ```json
+    {
+        "action": "search",
+        "query": "python tutorial",
         "max_results": 10
     }
     ```
     """
     try:
-        result = youtube_service.get_trending_videos(
-            country=request.country,
-            category=request.category,
-            max_results=request.max_results
-        )
+        action = getattr(request, 'action', 'trending_videos') or 'trending_videos'
+        
+        if action == "search":
+            if not request.query:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail={
+                        "success": False,
+                        "error": "Missing parameter",
+                        "message": "Query is required for search action"
+                    }
+                )
+            result = youtube_service.search_videos(
+                query=request.query,
+                country=request.country,
+                max_results=request.max_results
+            )
+        else:
+            result = youtube_service.get_trending_videos(
+                country=request.country,
+                category=request.category,
+                max_results=request.max_results
+            )
         return result
 
     except HTTPException:
-        # Re-raise HTTP exceptions
         raise
     except Exception as e:
-        # Handle unexpected errors
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
