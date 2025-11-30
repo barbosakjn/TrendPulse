@@ -125,20 +125,6 @@ def verify_token(token: str, token_type: str = "access") -> Optional[Dict[str, A
         return None
 
 
-def decode_token(token: str) -> Optional[Dict[str, Any]]:
-    """Decode a JWT token without verification."""
-    try:
-        payload = jwt.decode(
-            token,
-            settings.JWT_SECRET_KEY,
-            algorithms=[settings.JWT_ALGORITHM],
-            options={"verify_signature": False}
-        )
-        return payload
-    except JWTError:
-        return None
-
-
 # ============================================================================
 # TOKEN GENERATION
 # ============================================================================
