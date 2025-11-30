@@ -158,8 +158,13 @@ class ApiClient {
       async (error: AxiosError) => {
         const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
-        // Handle 401 Unauthorized - Token expired
-        if (error.response?.status === 401 && !originalRequest._retry) {
+        // Don't try to refresh token for auth endpoints (login, register, etc.)
+        const isAuthEndpoint = originalRequest.url?.includes('/api/auth/login') ||
+                              originalRequest.url?.includes('/api/auth/register') ||
+                              originalRequest.url?.includes('/api/auth/forgot-password');
+
+        // Handle 401 Unauthorized - Token expired (but not for auth endpoints)
+        if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
           if (this.isRefreshing) {
             // Wait for token refresh to complete
             return new Promise((resolve, reject) => {
