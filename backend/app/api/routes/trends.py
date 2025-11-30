@@ -15,12 +15,15 @@ from app.schemas.trends import (
     RedditTrendingResponse,
     ExaSearchRequest,
     ExaSearchResponse,
+    TwitterSearchRequest,
+    TwitterSearchResponse,
     ErrorResponse,
 )
 from app.services.google_trends_service import google_trends_service
 from app.services.youtube_service import youtube_service
 from app.services.reddit_service import reddit_service
 from app.services.exa_service import exa_service
+from app.services.twitter_service import twitter_service
 
 
 # Create router
@@ -525,6 +528,123 @@ async def search_exa(request: ExaSearchRequest):
         raise
     except Exception as e:
         # Handle unexpected errors
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "success": False,
+                "error": "Internal server error",
+                "message": str(e)
+            }
+        )
+
+
+# ============================================================================
+# TWITTER/X ENDPOINT
+# ============================================================================
+
+@router.post(
+    "/twitter",
+    response_model=TwitterSearchResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Search Twitter/X",
+    description="Search tweets by keyword or get trending topics from Twitter/X",
+    responses={
+        200: {
+            "description": "Twitter data retrieved successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": True,
+                        "query": "AI trends",
+                        "tweets": [
+                            {
+                                "tweet_id": "123456789",
+                                "text": "Example tweet about AI...",
+                                "user": {
+                                    "name": "Tech User",
+                                    "screen_name": "techuser",
+                                    "followers_count": 1000
+                                },
+                                "retweet_count": 50,
+                                "favorite_count": 200
+                            }
+                        ],
+                        "count": 1,
+                        "timestamp": "2024-01-01T12:00:00"
+                    }
+                }
+            }
+        },
+        400: {"model": ErrorResponse, "description": "Bad request - invalid parameters"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+async def search_twitter(request: TwitterSearchRequest):
+    """
+    Search Twitter/X or get trending topics.
+
+    **Actions:**
+    - `search`: Search tweets by keyword
+    - `trends`: Get trending topics
+
+    **Parameters:**
+    - `action`: 'search' or 'trends'
+    - `query`: Search keyword (required for search action)
+    - `max_results`: Number of tweets to return (1-50, default: 10)
+    - `search_type`: 'Latest' or 'Top'
+
+    **Example - Search:**
+    ```json
+    {
+        "action": "search",
+        "query": "AI trends 2025",
+        "max_results": 10
+    }
+    ```
+
+    **Example - Trends:**
+    ```json
+    {
+        "action": "trends"
+    }
+    ```
+    """
+    try:
+        if request.action == "search":
+            if not request.query:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail={
+                        "success": False,
+                        "error": "Missing parameter",
+                        "message": "Query is required for search action"
+                    }
+                )
+            
+            result = await twitter_service.search_tweets(
+                query=request.query,
+                max_results=request.max_results,
+                search_type=request.search_type
+            )
+            return result
+
+        elif request.action == "trends":
+            result = await twitter_service.get_trends()
+            return result
+
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "success": False,
+                    "error": "Invalid action",
+                    "message": f"Action must be 'search' or 'trends', got '{request.action}'"
+                }
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={

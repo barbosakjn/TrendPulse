@@ -60,13 +60,23 @@ interface ExaResult {
   text?: string;
 }
 
-type DataSource = 'google' | 'youtube' | 'reddit' | 'exa';
+interface TwitterTweet {
+  tweet_id: string;
+  text: string;
+  user: { name: string; screen_name: string; followers_count: number };
+  retweet_count: number;
+  favorite_count: number;
+  url: string;
+}
+
+type DataSource = 'google' | 'youtube' | 'reddit' | 'exa' | 'twitter';
 
 interface LoadingState {
   google: boolean;
   youtube: boolean;
   reddit: boolean;
   exa: boolean;
+  twitter: boolean;
 }
 
 export default function DashboardPage() {
@@ -81,13 +91,15 @@ export default function DashboardPage() {
     google: false,
     youtube: false,
     reddit: false,
-    exa: false
+    exa: false,
+    twitter: false
   });
   const [errors, setErrors] = useState<Record<DataSource, string | null>>({
     google: null,
     youtube: null,
     reddit: null,
-    exa: null
+    exa: null,
+    twitter: null
   });
 
   const [googleTrends, setGoogleTrends] = useState<GoogleTrend[]>([]);
@@ -95,6 +107,7 @@ export default function DashboardPage() {
   const [youtubeVideos, setYoutubeVideos] = useState<YouTubeVideo[]>([]);
   const [redditPosts, setRedditPosts] = useState<RedditPost[]>([]);
   const [exaResults, setExaResults] = useState<ExaResult[]>([]);
+  const [twitterTweets, setTwitterTweets] = useState<TwitterTweet[]>([]);
 
   const [stats, setStats] = useState({
     totalTrends: 0,
@@ -265,6 +278,36 @@ export default function DashboardPage() {
     }
   };
 
+  const searchTwitter = async (query: string) => {
+    setSourceLoading('twitter', true);
+    setSourceError('twitter', null);
+
+    try {
+      const response = await fetch('/api/trends/twitter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'search', 
+          query, 
+          max_results: 10 
+        })
+      });
+
+      const data = await response.json();
+      
+      if (response.ok && data.success && data.tweets) {
+        setTwitterTweets(data.tweets);
+        setSearchedKeyword(query);
+      } else {
+        setSourceError('twitter', data.message || 'Twitter/X requires login. Configure TWITTER_USERNAME, TWITTER_EMAIL, and TWITTER_PASSWORD.');
+      }
+    } catch (err) {
+      setSourceError('twitter', 'Failed to search Twitter/X.');
+    } finally {
+      setSourceLoading('twitter', false);
+    }
+  };
+
   const handleSearch = useCallback(() => {
     if (!searchQuery.trim()) return;
     
@@ -282,6 +325,9 @@ export default function DashboardPage() {
         break;
       case 'exa':
         searchExa(searchQuery);
+        break;
+      case 'twitter':
+        searchTwitter(searchQuery);
         break;
     }
   }, [searchQuery, activeSource]);
@@ -302,6 +348,9 @@ export default function DashboardPage() {
           break;
         case 'google':
           searchGoogle(defaultQuery);
+          break;
+        case 'twitter':
+          searchTwitter(defaultQuery);
           break;
       }
     } else {
@@ -626,12 +675,13 @@ export default function DashboardPage() {
                 ))}
               </div>
 
-              {(errors.youtube || errors.reddit || errors.exa) && (
+              {(errors.youtube || errors.reddit || errors.exa || errors.twitter) && (
                 <div className="mt-4 p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl">
                   <div className="flex items-start gap-3">
                     <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
                     <div className="text-sm text-amber-300">
                       {errors.youtube && <p>{errors.youtube}</p>}
+                      {errors.twitter && <p>{errors.twitter}</p>}
                       {errors.reddit && <p>{errors.reddit}</p>}
                       {errors.exa && <p>{errors.exa}</p>}
                     </div>
@@ -649,7 +699,7 @@ export default function DashboardPage() {
               </div>
             </div>
             
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               <div className="p-4 bg-slate-800/30 rounded-xl text-center">
                 <Globe className="w-8 h-8 text-blue-400 mx-auto mb-2" />
                 <p className="text-white font-medium">Google Trends</p>
@@ -662,6 +712,15 @@ export default function DashboardPage() {
                 <p className="text-white font-medium">YouTube</p>
                 <p className={`text-xs ${errors.youtube ? 'text-amber-400' : 'text-emerald-400'}`}>
                   {errors.youtube ? 'Needs API Key' : 'Connected'}
+                </p>
+              </div>
+              <div className="p-4 bg-slate-800/30 rounded-xl text-center">
+                <svg className="w-8 h-8 text-slate-200 mx-auto mb-2" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                </svg>
+                <p className="text-white font-medium">X/Twitter</p>
+                <p className={`text-xs ${errors.twitter ? 'text-amber-400' : 'text-emerald-400'}`}>
+                  {errors.twitter ? 'Needs Login' : 'Connected'}
                 </p>
               </div>
               <div className="p-4 bg-slate-800/30 rounded-xl text-center">
@@ -694,7 +753,7 @@ export default function DashboardPage() {
               </div>
 
               <div className="flex gap-2 mb-4 flex-wrap">
-                {(['exa', 'google', 'youtube', 'reddit'] as DataSource[]).map((source) => (
+                {(['exa', 'google', 'youtube', 'twitter', 'reddit'] as DataSource[]).map((source) => (
                   <button
                     key={source}
                     onClick={() => setActiveSource(source)}
@@ -704,7 +763,7 @@ export default function DashboardPage() {
                         : 'bg-slate-800 text-slate-400 hover:text-white'
                     }`}
                   >
-                    {source === 'exa' ? 'AI Search' : source.charAt(0).toUpperCase() + source.slice(1)}
+                    {source === 'exa' ? 'AI Search' : source === 'twitter' ? 'X/Twitter' : source.charAt(0).toUpperCase() + source.slice(1)}
                   </button>
                 ))}
               </div>
@@ -722,6 +781,8 @@ export default function DashboardPage() {
                       ? 'Enter keyword to analyze'
                       : activeSource === 'youtube'
                       ? 'Search YouTube videos (e.g., AI trends)'
+                      : activeSource === 'twitter'
+                      ? 'Search tweets (e.g., AI trends)'
                       : 'What trends are you looking for?'
                   }
                   className="flex-1 px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
@@ -742,6 +803,7 @@ export default function DashboardPage() {
               <p className="text-sm text-slate-500">
                 {activeSource === 'google' && 'Analyze keyword interest over time on Google Trends'}
                 {activeSource === 'youtube' && 'Search YouTube videos by keyword'}
+                {activeSource === 'twitter' && 'Search tweets by keyword on X/Twitter'}
                 {activeSource === 'reddit' && 'Get hot posts from any subreddit'}
                 {activeSource === 'exa' && 'AI-powered web search for trends and insights'}
               </p>

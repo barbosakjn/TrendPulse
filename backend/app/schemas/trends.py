@@ -309,3 +309,72 @@ class ExaSearchResponse(BaseModel):
     timestamp: str = Field(..., description="ISO timestamp of when data was fetched")
     message: Optional[str] = Field(None, description="Optional message")
     error: Optional[str] = Field(None, description="Error type if failed")
+
+
+# ============================================================================
+# TWITTER/X SCHEMAS
+# ============================================================================
+
+class TwitterSearchRequest(BaseModel):
+    """Request schema for Twitter/X search."""
+    action: str = Field(
+        default="search",
+        description="Action to perform: 'search' or 'trends'"
+    )
+    query: Optional[str] = Field(
+        None,
+        description="Search query (required for 'search' action)"
+    )
+    max_results: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Number of tweets to return (1-50)"
+    )
+    search_type: str = Field(
+        default="Latest",
+        description="Search type: 'Latest' or 'Top'"
+    )
+
+
+class TwitterUser(BaseModel):
+    """Twitter user information."""
+    id: Optional[str] = Field(None, description="User ID")
+    name: str = Field(..., description="Display name")
+    screen_name: str = Field(..., description="Username/handle")
+    profile_image: Optional[str] = Field(None, description="Profile image URL")
+    followers_count: int = Field(default=0, description="Number of followers")
+
+
+class TwitterTweet(BaseModel):
+    """Individual tweet item."""
+    tweet_id: str = Field(..., description="Tweet ID")
+    text: str = Field(..., description="Tweet text content")
+    user: TwitterUser = Field(..., description="Tweet author")
+    created_at: Optional[str] = Field(None, description="Tweet creation date")
+    retweet_count: int = Field(default=0, description="Number of retweets")
+    favorite_count: int = Field(default=0, description="Number of likes")
+    reply_count: int = Field(default=0, description="Number of replies")
+    url: Optional[str] = Field(None, description="Tweet URL")
+
+
+class TwitterTrend(BaseModel):
+    """Individual trending topic."""
+    rank: int = Field(..., description="Trend rank")
+    name: str = Field(..., description="Trend name/hashtag")
+    tweet_count: Optional[int] = Field(None, description="Number of tweets")
+    url: Optional[str] = Field(None, description="Search URL")
+
+
+class TwitterSearchResponse(BaseModel):
+    """Response schema for Twitter search."""
+    success: bool = Field(..., description="Whether the request was successful")
+    query: Optional[str] = Field(None, description="Search query used")
+    search_type: Optional[str] = Field(None, description="Search type used")
+    tweets: List[TwitterTweet] = Field(default=[], description="List of tweets")
+    trends: List[TwitterTrend] = Field(default=[], description="List of trends (for trends action)")
+    count: int = Field(..., description="Number of results returned")
+    max_results: Optional[int] = Field(None, description="Maximum results requested")
+    timestamp: str = Field(..., description="ISO timestamp of when data was fetched")
+    message: Optional[str] = Field(None, description="Optional message")
+    error: Optional[str] = Field(None, description="Error type if failed")

@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     REDDIT_CLIENT_SECRET: Optional[str] = None
     REDDIT_USER_AGENT: str = "TrendPulse/1.0"
     EXA_API_KEY: Optional[str] = None
+    TWITTER_USERNAME: Optional[str] = None
+    TWITTER_EMAIL: Optional[str] = None
+    TWITTER_PASSWORD: Optional[str] = None
 
     # OAuth
     GOOGLE_CLIENT_ID: Optional[str] = None
