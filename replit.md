@@ -11,6 +11,11 @@ TrendPulse is a trend discovery platform for SaaS and digital products. It aggre
 - **Data Fetching**: TanStack Query
 
 ## Recent Changes (November 30, 2025)
+### YouTube Keyword Search
+- Added YouTube search by keyword functionality (not just trending videos)
+- YouTube now appears in Search Trends modal alongside AI Search, Google, and Reddit
+- All 4 sources now support keyword-based search
+
 ### Google Trends Fix
 - Migrated from `pytrends` to `trendspyg` library (pytrends was archived and returning 404 errors)
 - Google Trends trending searches now work via RSS feed API
