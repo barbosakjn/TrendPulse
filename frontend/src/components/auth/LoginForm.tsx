@@ -8,6 +8,7 @@ import { z } from 'zod';
 import Link from 'next/link';
 import { Mail, Lock, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { apiClient } from '@/services/api';
+import { useAuthStore } from '@/stores/authStore';
 
 // Validation schema
 const loginSchema = z.object({
@@ -20,6 +21,7 @@ type LoginFormData = z.infer<typeof loginSchema>;
 
 export default function LoginForm() {
   const router = useRouter();
+  const { setUser, setTokens } = useAuthStore();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,14 +44,15 @@ export default function LoginForm() {
     setSuccess(null);
 
     try {
-      // Usa apiClient.login() para fazer POST para http://localhost:8000/api/auth/login
       const response = await apiClient.login({
         email: data.email,
         password: data.password,
         remember_me: data.remember_me || false,
       });
 
-      // Sucesso - mostra mensagem e redireciona para /dashboard
+      setTokens(response.access_token, response.refresh_token);
+      setUser(response.user);
+
       setSuccess('Bem-vindo de volta!');
       setTimeout(() => {
         router.push('/dashboard');
