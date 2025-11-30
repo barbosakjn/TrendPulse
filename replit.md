@@ -11,10 +11,16 @@ TrendPulse is a trend discovery platform for SaaS and digital products. It aggre
 - **Data Fetching**: TanStack Query
 
 ## Recent Changes (November 30, 2025)
+### X/Twitter Integration
+- Added X/Twitter as the 5th data source using Twikit library (no API fees)
+- Twitter search by keyword now available in Search Trends modal
+- All 5 sources (AI Search, Google, YouTube, X/Twitter, Reddit) support keyword search
+- Requires TWITTER_USERNAME, TWITTER_EMAIL, TWITTER_PASSWORD secrets for authentication
+
 ### YouTube Keyword Search
 - Added YouTube search by keyword functionality (not just trending videos)
 - YouTube now appears in Search Trends modal alongside AI Search, Google, and Reddit
-- All 4 sources now support keyword-based search
+- All 5 sources now support keyword-based search
 
 ### Google Trends Fix
 - Migrated from `pytrends` to `trendspyg` library (pytrends was archived and returning 404 errors)
