@@ -49,6 +49,7 @@ class Settings(BaseSettings):
 
     # External APIs
     YOUTUBE_API_KEY: Optional[str] = None
+    GOOGLE_API_KEY: Optional[str] = None
     YOUTUBE_QUOTA_LIMIT: int = 10000
     REDDIT_CLIENT_ID: Optional[str] = None
     REDDIT_CLIENT_SECRET: Optional[str] = None

@@ -20,9 +20,9 @@ class YouTubeService:
         Initialize YouTube service with API key.
 
         Args:
-            api_key: YouTube Data API v3 key. If not provided, uses settings.YOUTUBE_API_KEY
+            api_key: YouTube Data API v3 key. If not provided, uses settings.YOUTUBE_API_KEY or GOOGLE_API_KEY
         """
-        self.api_key = api_key or settings.YOUTUBE_API_KEY
+        self.api_key = api_key or settings.YOUTUBE_API_KEY or settings.GOOGLE_API_KEY
         self.youtube = None
         if self.api_key:
             self._initialize_client()
