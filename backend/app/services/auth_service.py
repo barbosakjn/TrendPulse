@@ -157,12 +157,12 @@ async def login_user(
 
     refresh_token = create_refresh_token(token_data, refresh_expires)
 
-    # Create session record
+    # Create session record - store full tokens
     session = UserSession(
         id=uuid.uuid4(),
         user_id=user.id,
-        token=access_token[:100],  # Store truncated token for reference
-        refresh_token=refresh_token[:100],
+        token=access_token,
+        refresh_token=refresh_token,
         user_agent=user_agent,
         ip_address=ip_address,
         expires_at=datetime.utcnow() + refresh_expires,
@@ -467,7 +467,7 @@ async def logout_user(
         # Delete specific session
         stmt = select(UserSession).where(
             UserSession.user_id == user_id,
-            UserSession.refresh_token.like(f"{refresh_token[:100]}%"),
+            UserSession.refresh_token == refresh_token,
         )
         result = await db.execute(stmt)
         session = result.scalar_one_or_none()
