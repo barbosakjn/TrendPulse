@@ -432,7 +432,7 @@ export default function DashboardPage() {
                 </div>
               ) : googleTrends.length > 0 ? (
                 <div className="space-y-3">
-                  {googleTrends.slice(0, 5).map((trend, index) => (
+                  {googleTrends.slice(0, 10).map((trend, index) => (
                     <div 
                       key={trend.rank}
                       className="group flex items-center gap-4 p-4 bg-slate-800/30 hover:bg-slate-800/50 rounded-xl transition-all cursor-pointer border border-transparent hover:border-slate-700/50"
