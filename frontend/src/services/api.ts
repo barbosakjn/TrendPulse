@@ -32,14 +32,14 @@ export interface TokenResponse {
 export interface User {
   id: string;
   email: string;
-  name?: string;
-  avatar_url?: string;
+  name: string | null;
+  avatar_url: string | null;
   email_verified: boolean;
   preferred_language: string;
-  default_niche?: string;
-  default_region?: string;
+  default_niche: string | null;
+  default_region: string | null;
   created_at: string;
-  last_login_at?: string;
+  last_login_at: string | null;
 }
 
 // ============================================================================
