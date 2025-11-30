@@ -1,6 +1,8 @@
+'use client';
+
 import axios from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE_URL = '';
 
 // Create axios instance with default config
 export const api = axios.create({
@@ -38,7 +40,7 @@ api.interceptors.response.use(
       try {
         const refreshToken = localStorage.getItem('refresh_token');
         if (refreshToken) {
-          const response = await axios.post(`${API_BASE_URL}/api/auth/refresh`, {
+          const response = await api.post('/api/auth/refresh', {
             refresh_token: refreshToken,
           });
 
