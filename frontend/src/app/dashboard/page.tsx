@@ -1,33 +1,106 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import Header from '@/components/layout/Header';
 import { useAuthStore } from '@/stores/authStore';
 import { initializeAuth } from '@/lib/auth';
 import { 
   TrendingUp, 
-  Users, 
   BarChart3, 
-  Activity,
-  Sparkles,
-  ArrowUpRight,
-  ArrowDownRight,
   Search,
-  Bell,
   Zap,
   Globe,
   Youtube,
   MessageSquare,
   ChevronRight,
-  Clock,
   Target,
-  Flame
+  Flame,
+  Loader2,
+  ExternalLink,
+  RefreshCw,
+  X,
+  Sparkles,
+  AlertCircle
 } from 'lucide-react';
+
+interface GoogleTrend {
+  rank: number;
+  query: string;
+  title: string;
+}
+
+interface KeywordInterest {
+  date: string;
+  value: number;
+}
+
+interface YouTubeVideo {
+  video_id: string;
+  title: string;
+  channel: { title: string };
+  statistics: { view_count: number };
+  url: string;
+}
+
+interface RedditPost {
+  post_id: string;
+  title: string;
+  subreddit: string;
+  upvotes: number;
+  num_comments: number;
+  url: string;
+}
+
+interface ExaResult {
+  id: string;
+  title: string;
+  url: string;
+  score: number;
+  text?: string;
+}
+
+type DataSource = 'google' | 'youtube' | 'reddit' | 'exa';
+
+interface LoadingState {
+  google: boolean;
+  youtube: boolean;
+  reddit: boolean;
+  exa: boolean;
+}
 
 export default function DashboardPage() {
   const { user } = useAuthStore();
   const [greeting, setGreeting] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeSource, setActiveSource] = useState<DataSource>('exa');
+  const [showSearchModal, setShowSearchModal] = useState(false);
+  const [searchedKeyword, setSearchedKeyword] = useState('');
+
+  const [loading, setLoading] = useState<LoadingState>({
+    google: false,
+    youtube: false,
+    reddit: false,
+    exa: false
+  });
+  const [errors, setErrors] = useState<Record<DataSource, string | null>>({
+    google: null,
+    youtube: null,
+    reddit: null,
+    exa: null
+  });
+
+  const [googleTrends, setGoogleTrends] = useState<GoogleTrend[]>([]);
+  const [keywordData, setKeywordData] = useState<KeywordInterest[]>([]);
+  const [youtubeVideos, setYoutubeVideos] = useState<YouTubeVideo[]>([]);
+  const [redditPosts, setRedditPosts] = useState<RedditPost[]>([]);
+  const [exaResults, setExaResults] = useState<ExaResult[]>([]);
+
+  const [stats, setStats] = useState({
+    totalTrends: 0,
+    trendingNow: 0,
+    lastUpdated: ''
+  });
 
   useEffect(() => {
     initializeAuth();
@@ -35,7 +108,210 @@ export default function DashboardPage() {
     if (hour < 12) setGreeting('Good morning');
     else if (hour < 18) setGreeting('Good afternoon');
     else setGreeting('Good evening');
+
+    fetchTrendingData();
   }, []);
+
+  const setSourceLoading = (source: DataSource, isLoading: boolean) => {
+    setLoading(prev => ({ ...prev, [source]: isLoading }));
+  };
+
+  const setSourceError = (source: DataSource, error: string | null) => {
+    setErrors(prev => ({ ...prev, [source]: error }));
+  };
+
+  const fetchTrendingData = async () => {
+    setSourceLoading('google', true);
+    setSourceError('google', null);
+
+    try {
+      const response = await fetch('/api/trends/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'trending_searches', country: 'united_states' })
+      });
+
+      const data = await response.json();
+      
+      if (response.ok && data.success && data.trends) {
+        setGoogleTrends(data.trends.slice(0, 10));
+        setStats({
+          totalTrends: data.count || data.trends.length,
+          trendingNow: Math.min(5, data.trends.length),
+          lastUpdated: new Date().toLocaleTimeString()
+        });
+      } else {
+        setSourceError('google', data.message || 'Google Trends is temporarily unavailable. Try again later.');
+      }
+    } catch (err) {
+      setSourceError('google', 'Failed to connect to Google Trends. Check your connection.');
+    } finally {
+      setSourceLoading('google', false);
+    }
+  };
+
+  const searchGoogle = async (keyword: string) => {
+    setSourceLoading('google', true);
+    setSourceError('google', null);
+    setSearchedKeyword(keyword);
+
+    try {
+      const response = await fetch('/api/trends/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'keyword_interest', 
+          keyword, 
+          timeframe: 'today 12-m', 
+          geo: 'US' 
+        })
+      });
+
+      const data = await response.json();
+      
+      if (response.ok && data.success && data.data) {
+        setKeywordData(data.data);
+      } else {
+        setSourceError('google', data.message || 'Could not fetch keyword data.');
+      }
+    } catch (err) {
+      setSourceError('google', 'Failed to search Google Trends.');
+    } finally {
+      setSourceLoading('google', false);
+    }
+  };
+
+  const searchYouTube = async () => {
+    setSourceLoading('youtube', true);
+    setSourceError('youtube', null);
+
+    try {
+      const response = await fetch('/api/trends/youtube', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ country: 'US', max_results: 10 })
+      });
+
+      const data = await response.json();
+      
+      if (response.ok && data.success && data.videos) {
+        setYoutubeVideos(data.videos);
+      } else {
+        setSourceError('youtube', data.message || 'YouTube API requires an API key. Configure GOOGLE_API_KEY in secrets.');
+      }
+    } catch (err) {
+      setSourceError('youtube', 'Failed to fetch YouTube trends.');
+    } finally {
+      setSourceLoading('youtube', false);
+    }
+  };
+
+  const searchReddit = async (subreddit: string) => {
+    setSourceLoading('reddit', true);
+    setSourceError('reddit', null);
+
+    try {
+      const response = await fetch('/api/trends/reddit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subreddit: subreddit || 'all', limit: 10 })
+      });
+
+      const data = await response.json();
+      
+      if (response.ok && data.success && data.posts) {
+        setRedditPosts(data.posts);
+      } else {
+        setSourceError('reddit', data.message || 'Reddit access is limited. Some content may not be available.');
+      }
+    } catch (err) {
+      setSourceError('reddit', 'Failed to fetch Reddit posts.');
+    } finally {
+      setSourceLoading('reddit', false);
+    }
+  };
+
+  const searchExa = async (query: string) => {
+    setSourceLoading('exa', true);
+    setSourceError('exa', null);
+
+    try {
+      const response = await fetch('/api/trends/exa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'search_trending', 
+          query, 
+          num_results: 10 
+        })
+      });
+
+      const data = await response.json();
+      
+      if (response.ok && data.success && data.results) {
+        setExaResults(data.results);
+      } else {
+        setSourceError('exa', data.message || 'EXA AI requires an API key. Configure EXA_API_KEY in secrets.');
+      }
+    } catch (err) {
+      setSourceError('exa', 'Failed to search with EXA AI.');
+    } finally {
+      setSourceLoading('exa', false);
+    }
+  };
+
+  const handleSearch = useCallback(() => {
+    if (!searchQuery.trim()) return;
+    
+    setShowSearchModal(false);
+    
+    switch (activeSource) {
+      case 'google':
+        searchGoogle(searchQuery);
+        break;
+      case 'youtube':
+        searchYouTube();
+        break;
+      case 'reddit':
+        searchReddit(searchQuery);
+        break;
+      case 'exa':
+        searchExa(searchQuery);
+        break;
+    }
+  }, [searchQuery, activeSource]);
+
+  const handleQuickAction = (source: DataSource, defaultQuery?: string) => {
+    setActiveSource(source);
+    if (defaultQuery) {
+      setSearchQuery(defaultQuery);
+      switch (source) {
+        case 'youtube':
+          searchYouTube();
+          break;
+        case 'reddit':
+          searchReddit(defaultQuery);
+          break;
+        case 'exa':
+          searchExa(defaultQuery);
+          break;
+        case 'google':
+          searchGoogle(defaultQuery);
+          break;
+      }
+    } else {
+      setShowSearchModal(true);
+    }
+  };
+
+  const formatNumber = (num: number) => {
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+    return num.toString();
+  };
+
+  const isAnyLoading = Object.values(loading).some(Boolean);
+  const hasResults = youtubeVideos.length > 0 || redditPosts.length > 0 || exaResults.length > 0 || keywordData.length > 0;
 
   return (
     <ProtectedRoute>
@@ -59,59 +335,51 @@ export default function DashboardPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-            <div className="group relative overflow-hidden bg-gradient-to-br from-indigo-600/20 to-indigo-900/20 backdrop-blur-xl rounded-2xl border border-indigo-500/20 p-6 hover:border-indigo-500/40 transition-all duration-300 hover:shadow-lg hover:shadow-indigo-500/10 hover:-translate-y-1">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full blur-3xl group-hover:bg-indigo-500/20 transition-all"></div>
+            <div className="group relative overflow-hidden bg-gradient-to-br from-indigo-600/20 to-indigo-900/20 backdrop-blur-xl rounded-2xl border border-indigo-500/20 p-6 hover:border-indigo-500/40 transition-all duration-300">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full blur-3xl"></div>
               <div className="relative">
                 <div className="flex items-center justify-between mb-4">
                   <div className="p-3 bg-indigo-500/20 rounded-xl">
                     <TrendingUp className="w-6 h-6 text-indigo-400" />
                   </div>
-                  <div className="flex items-center gap-1 text-emerald-400 text-sm font-medium bg-emerald-500/10 px-2 py-1 rounded-full">
-                    <ArrowUpRight className="w-3 h-3" />
-                    <span>+23%</span>
-                  </div>
                 </div>
-                <span className="text-3xl font-bold text-white block mb-1">12</span>
+                <span className="text-3xl font-bold text-white block mb-1">
+                  {loading.google ? '...' : stats.totalTrends || googleTrends.length}
+                </span>
                 <h3 className="text-sm font-medium text-slate-400">Active Trends</h3>
               </div>
             </div>
 
-            <div className="group relative overflow-hidden bg-gradient-to-br from-emerald-600/20 to-emerald-900/20 backdrop-blur-xl rounded-2xl border border-emerald-500/20 p-6 hover:border-emerald-500/40 transition-all duration-300 hover:shadow-lg hover:shadow-emerald-500/10 hover:-translate-y-1">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl group-hover:bg-emerald-500/20 transition-all"></div>
+            <div className="group relative overflow-hidden bg-gradient-to-br from-emerald-600/20 to-emerald-900/20 backdrop-blur-xl rounded-2xl border border-emerald-500/20 p-6 hover:border-emerald-500/40 transition-all duration-300">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl"></div>
               <div className="relative">
                 <div className="flex items-center justify-between mb-4">
                   <div className="p-3 bg-emerald-500/20 rounded-xl">
                     <Target className="w-6 h-6 text-emerald-400" />
                   </div>
-                  <div className="flex items-center gap-1 text-emerald-400 text-sm font-medium bg-emerald-500/10 px-2 py-1 rounded-full">
-                    <ArrowUpRight className="w-3 h-3" />
-                    <span>+12%</span>
-                  </div>
                 </div>
-                <span className="text-3xl font-bold text-white block mb-1">847</span>
-                <h3 className="text-sm font-medium text-slate-400">Opportunities Found</h3>
+                <span className="text-3xl font-bold text-white block mb-1">
+                  {youtubeVideos.length + redditPosts.length}
+                </span>
+                <h3 className="text-sm font-medium text-slate-400">Content Found</h3>
               </div>
             </div>
 
-            <div className="group relative overflow-hidden bg-gradient-to-br from-purple-600/20 to-purple-900/20 backdrop-blur-xl rounded-2xl border border-purple-500/20 p-6 hover:border-purple-500/40 transition-all duration-300 hover:shadow-lg hover:shadow-purple-500/10 hover:-translate-y-1">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl group-hover:bg-purple-500/20 transition-all"></div>
+            <div className="group relative overflow-hidden bg-gradient-to-br from-purple-600/20 to-purple-900/20 backdrop-blur-xl rounded-2xl border border-purple-500/20 p-6 hover:border-purple-500/40 transition-all duration-300">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl"></div>
               <div className="relative">
                 <div className="flex items-center justify-between mb-4">
                   <div className="p-3 bg-purple-500/20 rounded-xl">
                     <BarChart3 className="w-6 h-6 text-purple-400" />
                   </div>
-                  <div className="flex items-center gap-1 text-emerald-400 text-sm font-medium bg-emerald-500/10 px-2 py-1 rounded-full">
-                    <ArrowUpRight className="w-3 h-3" />
-                    <span>+5%</span>
-                  </div>
                 </div>
-                <span className="text-3xl font-bold text-white block mb-1">87%</span>
-                <h3 className="text-sm font-medium text-slate-400">Accuracy Rate</h3>
+                <span className="text-3xl font-bold text-white block mb-1">{exaResults.length}</span>
+                <h3 className="text-sm font-medium text-slate-400">AI Insights</h3>
               </div>
             </div>
 
-            <div className="group relative overflow-hidden bg-gradient-to-br from-orange-600/20 to-orange-900/20 backdrop-blur-xl rounded-2xl border border-orange-500/20 p-6 hover:border-orange-500/40 transition-all duration-300 hover:shadow-lg hover:shadow-orange-500/10 hover:-translate-y-1">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/10 rounded-full blur-3xl group-hover:bg-orange-500/20 transition-all"></div>
+            <div className="group relative overflow-hidden bg-gradient-to-br from-orange-600/20 to-orange-900/20 backdrop-blur-xl rounded-2xl border border-orange-500/20 p-6 hover:border-orange-500/40 transition-all duration-300">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/10 rounded-full blur-3xl"></div>
               <div className="relative">
                 <div className="flex items-center justify-between mb-4">
                   <div className="p-3 bg-orange-500/20 rounded-xl">
@@ -119,11 +387,11 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex items-center gap-1 text-orange-400 text-sm font-medium bg-orange-500/10 px-2 py-1 rounded-full">
                     <Zap className="w-3 h-3" />
-                    <span>Hot</span>
+                    <span>Live</span>
                   </div>
                 </div>
-                <span className="text-3xl font-bold text-white block mb-1">5</span>
-                <h3 className="text-sm font-medium text-slate-400">Trending Now</h3>
+                <span className="text-3xl font-bold text-white block mb-1">{stats.trendingNow}</span>
+                <h3 className="text-sm font-medium text-slate-400">Hot Topics</h3>
               </div>
             </div>
           </div>
@@ -133,65 +401,72 @@ export default function DashboardPage() {
               <div className="flex items-center justify-between mb-6">
                 <div>
                   <h2 className="text-xl font-bold text-white mb-1">Top Trending Topics</h2>
-                  <p className="text-slate-500 text-sm">Based on your niche preferences</p>
+                  <p className="text-slate-500 text-sm">
+                    {stats.lastUpdated ? `Updated ${stats.lastUpdated}` : 'Live from Google Trends'}
+                  </p>
                 </div>
-                <button className="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 text-sm font-medium transition-colors">
-                  View all <ChevronRight className="w-4 h-4" />
+                <button 
+                  onClick={fetchTrendingData}
+                  disabled={loading.google}
+                  className="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 text-sm font-medium transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-4 h-4 ${loading.google ? 'animate-spin' : ''}`} />
+                  Refresh
                 </button>
               </div>
               
-              <div className="space-y-4">
-                <div className="group flex items-center gap-4 p-4 bg-slate-800/30 hover:bg-slate-800/50 rounded-xl transition-all cursor-pointer border border-transparent hover:border-slate-700/50">
-                  <div className="flex items-center justify-center w-10 h-10 bg-gradient-to-br from-red-500 to-pink-500 rounded-xl">
-                    <Youtube className="w-5 h-5 text-white" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-semibold text-white group-hover:text-indigo-300 transition-colors">AI Video Editing Tools</h3>
-                      <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 text-xs rounded-full">+340%</span>
-                    </div>
-                    <p className="text-sm text-slate-400">Trending on YouTube • 2.4M searches</p>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-lg font-bold text-white">92</div>
-                    <div className="text-xs text-slate-500">Score</div>
-                  </div>
+              {loading.google && googleTrends.length === 0 ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
                 </div>
-
-                <div className="group flex items-center gap-4 p-4 bg-slate-800/30 hover:bg-slate-800/50 rounded-xl transition-all cursor-pointer border border-transparent hover:border-slate-700/50">
-                  <div className="flex items-center justify-center w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl">
-                    <Globe className="w-5 h-5 text-white" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-semibold text-white group-hover:text-indigo-300 transition-colors">No-Code SaaS Builders</h3>
-                      <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 text-xs rounded-full">+180%</span>
-                    </div>
-                    <p className="text-sm text-slate-400">Trending on Google • 890K searches</p>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-lg font-bold text-white">87</div>
-                    <div className="text-xs text-slate-500">Score</div>
-                  </div>
+              ) : errors.google ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <AlertCircle className="w-12 h-12 text-amber-500 mb-4" />
+                  <p className="text-slate-400 mb-2">{errors.google}</p>
+                  <button 
+                    onClick={fetchTrendingData}
+                    className="text-indigo-400 hover:text-indigo-300 text-sm"
+                  >
+                    Try again
+                  </button>
                 </div>
-
-                <div className="group flex items-center gap-4 p-4 bg-slate-800/30 hover:bg-slate-800/50 rounded-xl transition-all cursor-pointer border border-transparent hover:border-slate-700/50">
-                  <div className="flex items-center justify-center w-10 h-10 bg-gradient-to-br from-orange-500 to-amber-500 rounded-xl">
-                    <MessageSquare className="w-5 h-5 text-white" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-semibold text-white group-hover:text-indigo-300 transition-colors">Voice AI Agents</h3>
-                      <span className="px-2 py-0.5 bg-orange-500/20 text-orange-400 text-xs rounded-full">New</span>
+              ) : googleTrends.length > 0 ? (
+                <div className="space-y-3">
+                  {googleTrends.slice(0, 5).map((trend, index) => (
+                    <div 
+                      key={trend.rank}
+                      className="group flex items-center gap-4 p-4 bg-slate-800/30 hover:bg-slate-800/50 rounded-xl transition-all cursor-pointer border border-transparent hover:border-slate-700/50"
+                    >
+                      <div className={`flex items-center justify-center w-10 h-10 rounded-xl ${
+                        index === 0 ? 'bg-gradient-to-br from-yellow-500 to-orange-500' :
+                        index === 1 ? 'bg-gradient-to-br from-slate-400 to-slate-500' :
+                        index === 2 ? 'bg-gradient-to-br from-amber-600 to-amber-700' :
+                        'bg-gradient-to-br from-indigo-500 to-purple-500'
+                      }`}>
+                        <span className="text-white font-bold text-sm">#{trend.rank}</span>
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-white group-hover:text-indigo-300 transition-colors">
+                          {trend.title || trend.query}
+                        </h3>
+                        <p className="text-sm text-slate-400">Trending on Google</p>
+                      </div>
+                      <button 
+                        onClick={() => handleQuickAction('exa', trend.query)}
+                        className="p-2 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 transition-colors"
+                        title="Research this topic"
+                      >
+                        <Search className="w-4 h-4 text-indigo-400" />
+                      </button>
                     </div>
-                    <p className="text-sm text-slate-400">Trending on Reddit • 45K mentions</p>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-lg font-bold text-white">78</div>
-                    <div className="text-xs text-slate-500">Score</div>
-                  </div>
+                  ))}
                 </div>
-              </div>
+              ) : (
+                <div className="text-center py-12 text-slate-400">
+                  <Globe className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p>No trends loaded yet. Click Refresh to fetch latest data.</p>
+                </div>
+              )}
             </div>
 
             <div className="bg-slate-900/50 backdrop-blur-xl rounded-2xl border border-slate-800/50 p-6">
@@ -200,90 +475,271 @@ export default function DashboardPage() {
               </div>
               
               <div className="space-y-3">
-                <button className="w-full flex items-center gap-3 p-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 rounded-xl transition-all group">
+                <button 
+                  onClick={() => setShowSearchModal(true)}
+                  disabled={isAnyLoading}
+                  className="w-full flex items-center gap-3 p-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 rounded-xl transition-all group disabled:opacity-50"
+                >
                   <Search className="w-5 h-5 text-white" />
-                  <span className="font-medium text-white">Discover New Trends</span>
-                  <ArrowUpRight className="w-4 h-4 text-white/70 ml-auto group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                  <span className="font-medium text-white">Search Trends</span>
+                  <ChevronRight className="w-4 h-4 text-white/70 ml-auto group-hover:translate-x-1 transition-transform" />
                 </button>
                 
-                <button className="w-full flex items-center gap-3 p-4 bg-slate-800/50 hover:bg-slate-800 rounded-xl transition-all border border-slate-700/50 group">
-                  <BarChart3 className="w-5 h-5 text-slate-400" />
-                  <span className="font-medium text-slate-300">Generate Report</span>
-                  <ArrowUpRight className="w-4 h-4 text-slate-500 ml-auto group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                <button 
+                  onClick={() => handleQuickAction('youtube')}
+                  disabled={loading.youtube}
+                  className="w-full flex items-center gap-3 p-4 bg-slate-800/50 hover:bg-slate-800 rounded-xl transition-all border border-slate-700/50 group disabled:opacity-50"
+                >
+                  {loading.youtube ? (
+                    <Loader2 className="w-5 h-5 text-red-400 animate-spin" />
+                  ) : (
+                    <Youtube className="w-5 h-5 text-red-400" />
+                  )}
+                  <span className="font-medium text-slate-300">YouTube Trends</span>
+                  <ChevronRight className="w-4 h-4 text-slate-500 ml-auto group-hover:translate-x-1 transition-transform" />
                 </button>
                 
-                <button className="w-full flex items-center gap-3 p-4 bg-slate-800/50 hover:bg-slate-800 rounded-xl transition-all border border-slate-700/50 group">
-                  <Bell className="w-5 h-5 text-slate-400" />
-                  <span className="font-medium text-slate-300">Set Alert</span>
-                  <ArrowUpRight className="w-4 h-4 text-slate-500 ml-auto group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                <button 
+                  onClick={() => handleQuickAction('reddit', 'technology')}
+                  disabled={loading.reddit}
+                  className="w-full flex items-center gap-3 p-4 bg-slate-800/50 hover:bg-slate-800 rounded-xl transition-all border border-slate-700/50 group disabled:opacity-50"
+                >
+                  {loading.reddit ? (
+                    <Loader2 className="w-5 h-5 text-orange-400 animate-spin" />
+                  ) : (
+                    <MessageSquare className="w-5 h-5 text-orange-400" />
+                  )}
+                  <span className="font-medium text-slate-300">Reddit Tech</span>
+                  <ChevronRight className="w-4 h-4 text-slate-500 ml-auto group-hover:translate-x-1 transition-transform" />
                 </button>
-              </div>
 
-              <div className="mt-6 p-4 bg-gradient-to-r from-indigo-900/30 to-purple-900/30 rounded-xl border border-indigo-500/20">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="p-2 bg-indigo-500/20 rounded-lg">
-                    <Zap className="w-4 h-4 text-indigo-400" />
-                  </div>
-                  <span className="font-semibold text-white text-sm">Pro Tip</span>
-                </div>
-                <p className="text-slate-400 text-sm leading-relaxed">
-                  Set up alerts for your niche keywords to get notified when new trends emerge.
-                </p>
+                <button 
+                  onClick={() => handleQuickAction('exa', 'AI startup trends 2024')}
+                  disabled={loading.exa}
+                  className="w-full flex items-center gap-3 p-4 bg-slate-800/50 hover:bg-slate-800 rounded-xl transition-all border border-slate-700/50 group disabled:opacity-50"
+                >
+                  {loading.exa ? (
+                    <Loader2 className="w-5 h-5 text-purple-400 animate-spin" />
+                  ) : (
+                    <Zap className="w-5 h-5 text-purple-400" />
+                  )}
+                  <span className="font-medium text-slate-300">AI Research</span>
+                  <ChevronRight className="w-4 h-4 text-slate-500 ml-auto group-hover:translate-x-1 transition-transform" />
+                </button>
               </div>
             </div>
           </div>
+
+          {hasResults && (
+            <div className="bg-slate-900/50 backdrop-blur-xl rounded-2xl border border-slate-800/50 p-6 mb-8">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-xl font-bold text-white mb-1">Search Results</h2>
+                  <p className="text-slate-500 text-sm">
+                    {searchedKeyword && `Results for "${searchedKeyword}"`}
+                    {youtubeVideos.length > 0 && ` • ${youtubeVideos.length} videos`}
+                    {redditPosts.length > 0 && ` • ${redditPosts.length} posts`}
+                    {exaResults.length > 0 && ` • ${exaResults.length} insights`}
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setYoutubeVideos([]);
+                    setRedditPosts([]);
+                    setExaResults([]);
+                    setKeywordData([]);
+                    setSearchedKeyword('');
+                  }}
+                  className="text-slate-400 hover:text-white text-sm"
+                >
+                  Clear
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {youtubeVideos.slice(0, 5).map((video) => (
+                  <a 
+                    key={video.video_id}
+                    href={video.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-4 p-4 bg-slate-800/30 hover:bg-slate-800/50 rounded-xl transition-all border border-transparent hover:border-red-500/30"
+                  >
+                    <div className="flex items-center justify-center w-10 h-10 bg-gradient-to-br from-red-500 to-pink-500 rounded-xl">
+                      <Youtube className="w-5 h-5 text-white" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-white truncate">{video.title}</h3>
+                      <p className="text-sm text-slate-400">
+                        {video.channel.title} • {formatNumber(video.statistics.view_count)} views
+                      </p>
+                    </div>
+                    <ExternalLink className="w-4 h-4 text-slate-500 flex-shrink-0" />
+                  </a>
+                ))}
+
+                {redditPosts.slice(0, 5).map((post) => (
+                  <a 
+                    key={post.post_id}
+                    href={post.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-4 p-4 bg-slate-800/30 hover:bg-slate-800/50 rounded-xl transition-all border border-transparent hover:border-orange-500/30"
+                  >
+                    <div className="flex items-center justify-center w-10 h-10 bg-gradient-to-br from-orange-500 to-amber-500 rounded-xl">
+                      <MessageSquare className="w-5 h-5 text-white" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-white truncate">{post.title}</h3>
+                      <p className="text-sm text-slate-400">
+                        r/{post.subreddit} • {formatNumber(post.upvotes)} upvotes • {post.num_comments} comments
+                      </p>
+                    </div>
+                    <ExternalLink className="w-4 h-4 text-slate-500 flex-shrink-0" />
+                  </a>
+                ))}
+
+                {exaResults.slice(0, 5).map((result) => (
+                  <a 
+                    key={result.id}
+                    href={result.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-4 p-4 bg-slate-800/30 hover:bg-slate-800/50 rounded-xl transition-all border border-transparent hover:border-purple-500/30"
+                  >
+                    <div className="flex items-center justify-center w-10 h-10 bg-gradient-to-br from-purple-500 to-indigo-500 rounded-xl">
+                      <Zap className="w-5 h-5 text-white" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-white truncate">{result.title}</h3>
+                      {result.text && (
+                        <p className="text-sm text-slate-400 truncate">{result.text}</p>
+                      )}
+                    </div>
+                    <ExternalLink className="w-4 h-4 text-slate-500 flex-shrink-0" />
+                  </a>
+                ))}
+              </div>
+
+              {(errors.youtube || errors.reddit || errors.exa) && (
+                <div className="mt-4 p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                    <div className="text-sm text-amber-300">
+                      {errors.youtube && <p>{errors.youtube}</p>}
+                      {errors.reddit && <p>{errors.reddit}</p>}
+                      {errors.exa && <p>{errors.exa}</p>}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="bg-slate-900/50 backdrop-blur-xl rounded-2xl border border-slate-800/50 p-6">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h2 className="text-xl font-bold text-white mb-1">Recent Activity</h2>
-                <p className="text-slate-500 text-sm">Your latest updates and discoveries</p>
-              </div>
-              <div className="flex items-center gap-2 text-slate-400 text-sm">
-                <Clock className="w-4 h-4" />
-                <span>Last 24 hours</span>
+                <h2 className="text-xl font-bold text-white mb-1">Data Sources</h2>
+                <p className="text-slate-500 text-sm">Connected platforms for trend discovery</p>
               </div>
             </div>
             
-            <div className="space-y-3">
-              <div className="flex items-center gap-4 p-4 bg-slate-800/30 rounded-xl hover:bg-slate-800/50 transition-all">
-                <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
-                <div className="p-2 bg-emerald-500/10 rounded-lg">
-                  <TrendingUp className="w-4 h-4 text-emerald-400" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-white font-medium">New trend detected</p>
-                  <p className="text-sm text-slate-400">AI technology trends are rising rapidly</p>
-                </div>
-                <span className="text-sm text-slate-500 bg-slate-800 px-3 py-1 rounded-full">2h ago</span>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="p-4 bg-slate-800/30 rounded-xl text-center">
+                <Globe className="w-8 h-8 text-blue-400 mx-auto mb-2" />
+                <p className="text-white font-medium">Google Trends</p>
+                <p className={`text-xs ${errors.google ? 'text-amber-400' : 'text-emerald-400'}`}>
+                  {errors.google ? 'Limited' : 'Connected'}
+                </p>
               </div>
-              
-              <div className="flex items-center gap-4 p-4 bg-slate-800/30 rounded-xl hover:bg-slate-800/50 transition-all">
-                <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-                <div className="p-2 bg-blue-500/10 rounded-lg">
-                  <BarChart3 className="w-4 h-4 text-blue-400" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-white font-medium">Weekly report ready</p>
-                  <p className="text-sm text-slate-400">Your trends analysis is complete</p>
-                </div>
-                <span className="text-sm text-slate-500 bg-slate-800 px-3 py-1 rounded-full">5h ago</span>
+              <div className="p-4 bg-slate-800/30 rounded-xl text-center">
+                <Youtube className="w-8 h-8 text-red-400 mx-auto mb-2" />
+                <p className="text-white font-medium">YouTube</p>
+                <p className={`text-xs ${errors.youtube ? 'text-amber-400' : 'text-emerald-400'}`}>
+                  {errors.youtube ? 'Needs API Key' : 'Connected'}
+                </p>
               </div>
-              
-              <div className="flex items-center gap-4 p-4 bg-slate-800/30 rounded-xl hover:bg-slate-800/50 transition-all">
-                <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
-                <div className="p-2 bg-purple-500/10 rounded-lg">
-                  <Bell className="w-4 h-4 text-purple-400" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-white font-medium">Alert triggered</p>
-                  <p className="text-sm text-slate-400">"SaaS tools" keyword reached 100K searches</p>
-                </div>
-                <span className="text-sm text-slate-500 bg-slate-800 px-3 py-1 rounded-full">1d ago</span>
+              <div className="p-4 bg-slate-800/30 rounded-xl text-center">
+                <MessageSquare className="w-8 h-8 text-orange-400 mx-auto mb-2" />
+                <p className="text-white font-medium">Reddit</p>
+                <p className="text-xs text-slate-400">Read-only</p>
+              </div>
+              <div className="p-4 bg-slate-800/30 rounded-xl text-center">
+                <Zap className="w-8 h-8 text-purple-400 mx-auto mb-2" />
+                <p className="text-white font-medium">Exa AI</p>
+                <p className={`text-xs ${errors.exa ? 'text-amber-400' : 'text-emerald-400'}`}>
+                  {errors.exa ? 'Needs API Key' : 'Connected'}
+                </p>
               </div>
             </div>
           </div>
         </main>
+
+        {showSearchModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold text-white">Search Trends</h3>
+                <button 
+                  onClick={() => setShowSearchModal(false)}
+                  className="p-2 hover:bg-slate-800 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-slate-400" />
+                </button>
+              </div>
+
+              <div className="flex gap-2 mb-4 flex-wrap">
+                {(['exa', 'google', 'reddit'] as DataSource[]).map((source) => (
+                  <button
+                    key={source}
+                    onClick={() => setActiveSource(source)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      activeSource === source 
+                        ? 'bg-indigo-600 text-white' 
+                        : 'bg-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {source === 'exa' ? 'AI Search' : source.charAt(0).toUpperCase() + source.slice(1)}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex gap-2 mb-4">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                  placeholder={
+                    activeSource === 'reddit' 
+                      ? 'Enter subreddit name (e.g., technology)' 
+                      : activeSource === 'google'
+                      ? 'Enter keyword to analyze'
+                      : 'What trends are you looking for?'
+                  }
+                  className="flex-1 px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                />
+                <button
+                  onClick={handleSearch}
+                  disabled={isAnyLoading || !searchQuery.trim()}
+                  className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-white font-medium transition-colors flex items-center gap-2"
+                >
+                  {isAnyLoading ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <Search className="w-5 h-5" />
+                  )}
+                </button>
+              </div>
+
+              <p className="text-sm text-slate-500">
+                {activeSource === 'google' && 'Analyze keyword interest over time on Google Trends'}
+                {activeSource === 'reddit' && 'Get hot posts from any subreddit'}
+                {activeSource === 'exa' && 'AI-powered web search for trends and insights'}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     </ProtectedRoute>
   );
