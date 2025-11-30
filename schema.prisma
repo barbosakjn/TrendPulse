@@ -1,0 +1,548 @@
+// ============================================================================
+// TrendPulse - Prisma Schema
+// Version: 1.0
+// Database: PostgreSQL
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+enum Language {
+  en
+  pt_BR
+  es
+}
+
+enum VolumeLevel {
+  low
+  medium
+  high
+}
+
+enum TrendDirection {
+  rising
+  stable
+  declining
+}
+
+enum AlertType {
+  keyword
+  niche
+  score
+  explosion
+}
+
+enum NotificationChannel {
+  email
+  telegram
+  push
+  in_app
+}
+
+enum ExportFormat {
+  csv
+  json
+  pdf
+  xlsx
+  png
+  svg
+}
+
+enum DataSource {
+  google_trends
+  youtube
+  reddit
+}
+
+enum NicheCategory {
+  saas
+  marketing
+  finance
+  health
+  technology
+  ecommerce
+  education
+  lifestyle
+  gaming
+  creator_economy
+  all
+}
+
+// ============================================================================
+// USER & AUTHENTICATION
+// ============================================================================
+
+model User {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  passwordHash      String?   @map("password_hash")
+  name              String?
+  avatarUrl         String?   @map("avatar_url")
+  preferredLanguage Language  @default(en) @map("preferred_language")
+  emailVerified     Boolean   @default(false) @map("email_verified")
+  emailVerifiedAt   DateTime? @map("email_verified_at")
+
+  // OAuth
+  googleId String? @unique @map("google_id")
+  githubId String? @unique @map("github_id")
+
+  // Preferences
+  defaultNiche     NicheCategory? @map("default_niche")
+  defaultRegion    String?        @default("worldwide") @map("default_region")
+  digestFrequency  String?        @default("daily") @map("digest_frequency")
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  lastLoginAt DateTime? @map("last_login_at")
+
+  // Relations
+  sessions       Session[]
+  favorites      Favorite[]
+  folders        Folder[]
+  alerts         Alert[]
+  alertLogs      AlertLog[]
+  searchHistory  SearchHistory[]
+  exports        Export[]
+  notifications  Notification[]
+
+  @@map("users")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  token        String   @unique
+  refreshToken String?  @unique @map("refresh_token")
+  userAgent    String?  @map("user_agent")
+  ipAddress    String?  @map("ip_address")
+  expiresAt    DateTime @map("expires_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("sessions")
+}
+
+model PasswordReset {
+  id        String   @id @default(cuid())
+  email     String
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([email])
+  @@index([token])
+  @@map("password_resets")
+}
+
+model EmailVerification {
+  id        String   @id @default(cuid())
+  email     String
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  verifiedAt DateTime? @map("verified_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([email])
+  @@index([token])
+  @@map("email_verifications")
+}
+
+// ============================================================================
+// TRENDS
+// ============================================================================
+
+model Trend {
+  id                String         @id @default(cuid())
+  keyword           String
+  normalizedKeyword String         @map("normalized_keyword")
+  category          NicheCategory  @default(all)
+  
+  // Scoring
+  opportunityScore  Int            @default(0) @map("opportunity_score")
+  growthRate        Decimal        @default(0) @map("growth_rate") @db.Decimal(10, 2)
+  volumeLevel       VolumeLevel    @default(low) @map("volume_level")
+  direction         TrendDirection @default(stable)
+  consistencyScore  Int            @default(0) @map("consistency_score")
+  freshnessScore    Int            @default(0) @map("freshness_score")
+  multiPlatformScore Int           @default(0) @map("multi_platform_score")
+
+  // Geographic
+  region            String         @default("worldwide")
+  language          String?
+
+  // Data
+  sources           DataSource[]
+  sparklineData     Json?          @map("sparkline_data") // Array of {date, value}
+  relatedTopics     Json?          @map("related_topics") // Array of related keywords
+  relatedQueries    Json?          @map("related_queries")
+  geoDistribution   Json?          @map("geo_distribution") // {region: score}
+
+  // Metadata
+  firstSeen         DateTime       @default(now()) @map("first_seen")
+  lastUpdated       DateTime       @updatedAt @map("last_updated")
+  isActive          Boolean        @default(true) @map("is_active")
+
+  // Relations
+  snapshots         TrendSnapshot[]
+  favorites         Favorite[]
+  sourceData        TrendSourceData[]
+  alertMatches      AlertLog[]
+
+  @@unique([normalizedKeyword, region])
+  @@index([category])
+  @@index([opportunityScore])
+  @@index([region])
+  @@index([lastUpdated])
+  @@index([normalizedKeyword])
+  @@map("trends")
+}
+
+model TrendSnapshot {
+  id           String      @id @default(cuid())
+  trendId      String      @map("trend_id")
+  
+  // Snapshot data
+  score        Int
+  growthRate   Decimal     @map("growth_rate") @db.Decimal(10, 2)
+  volumeLevel  VolumeLevel @map("volume_level")
+  direction    TrendDirection
+  
+  // Timestamp
+  snapshotDate DateTime    @map("snapshot_date") @db.Date
+  createdAt    DateTime    @default(now()) @map("created_at")
+
+  trend Trend @relation(fields: [trendId], references: [id], onDelete: Cascade)
+
+  @@unique([trendId, snapshotDate])
+  @@index([trendId])
+  @@index([snapshotDate])
+  @@map("trend_snapshots")
+}
+
+model TrendSourceData {
+  id        String     @id @default(cuid())
+  trendId   String     @map("trend_id")
+  source    DataSource
+  
+  // Source-specific data
+  rawData   Json       @map("raw_data")
+  score     Int?       // Source-specific score contribution
+  volume    Int?
+  
+  // Timestamps
+  fetchedAt DateTime   @default(now()) @map("fetched_at")
+
+  trend Trend @relation(fields: [trendId], references: [id], onDelete: Cascade)
+
+  @@unique([trendId, source])
+  @@index([trendId])
+  @@index([source])
+  @@map("trend_source_data")
+}
+
+// ============================================================================
+// FAVORITES
+// ============================================================================
+
+model Folder {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  name        String
+  description String?
+  color       String?  @default("#6366F1")
+  icon        String?
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  favorites Favorite[]
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@map("folders")
+}
+
+model Favorite {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  trendId     String   @map("trend_id")
+  folderId    String?  @map("folder_id")
+  
+  // User additions
+  notes       String?  @db.Text
+  tags        String[] @default([])
+  
+  // Tracking
+  scoreAtSave Int      @map("score_at_save")
+  currentScore Int?    @map("current_score")
+  scoreDelta  Int?     @map("score_delta")
+  
+  // Timestamps
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trend  Trend   @relation(fields: [trendId], references: [id], onDelete: Cascade)
+  folder Folder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, trendId])
+  @@index([userId])
+  @@index([trendId])
+  @@index([folderId])
+  @@map("favorites")
+}
+
+// ============================================================================
+// ALERTS
+// ============================================================================
+
+model Alert {
+  id          String              @id @default(cuid())
+  userId      String              @map("user_id")
+  name        String
+  alertType   AlertType           @map("alert_type")
+  
+  // Conditions
+  keyword     String?
+  niche       NicheCategory?
+  region      String?             @default("worldwide")
+  threshold   Int?                @default(60) // Score threshold
+  
+  // Notification settings
+  channels    NotificationChannel[]
+  frequency   String              @default("instant") // instant, daily, weekly
+  
+  // Status
+  isActive    Boolean             @default(true) @map("is_active")
+  lastTriggered DateTime?         @map("last_triggered")
+  triggerCount Int                @default(0) @map("trigger_count")
+  
+  // Timestamps
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+
+  user User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  logs AlertLog[]
+
+  @@index([userId])
+  @@index([alertType])
+  @@index([isActive])
+  @@map("alerts")
+}
+
+model AlertLog {
+  id          String   @id @default(cuid())
+  alertId     String   @map("alert_id")
+  userId      String   @map("user_id")
+  trendId     String?  @map("trend_id")
+  
+  // Details
+  message     String
+  score       Int?
+  growthRate  Decimal? @map("growth_rate") @db.Decimal(10, 2)
+  
+  // Delivery status
+  delivered   Boolean  @default(false)
+  deliveredAt DateTime? @map("delivered_at")
+  channels    NotificationChannel[]
+  
+  // Timestamps
+  triggeredAt DateTime @default(now()) @map("triggered_at")
+
+  alert Alert  @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trend Trend? @relation(fields: [trendId], references: [id], onDelete: SetNull)
+
+  @@index([alertId])
+  @@index([userId])
+  @@index([triggeredAt])
+  @@map("alert_logs")
+}
+
+// ============================================================================
+// USER ACTIVITY
+// ============================================================================
+
+model SearchHistory {
+  id         String        @id @default(cuid())
+  userId     String        @map("user_id")
+  
+  // Search parameters
+  query      String?
+  niche      NicheCategory?
+  region     String?
+  language   String?
+  timeRange  String?       @map("time_range")
+  minScore   Int?          @map("min_score")
+  sources    DataSource[]
+  
+  // Results
+  resultCount Int          @default(0) @map("result_count")
+  
+  // Timestamps
+  searchedAt DateTime      @default(now()) @map("searched_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([searchedAt])
+  @@map("search_history")
+}
+
+model Notification {
+  id        String              @id @default(cuid())
+  userId    String              @map("user_id")
+  
+  // Content
+  title     String
+  message   String
+  type      String              // alert, system, update
+  link      String?
+  
+  // Status
+  read      Boolean             @default(false)
+  readAt    DateTime?           @map("read_at")
+  
+  // Timestamps
+  createdAt DateTime            @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([read])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+// ============================================================================
+// EXPORTS
+// ============================================================================
+
+model Export {
+  id          String       @id @default(cuid())
+  userId      String       @map("user_id")
+  
+  // Export details
+  format      ExportFormat
+  type        String       // trends, favorites, trend_detail
+  
+  // Filters used
+  filters     Json?
+  
+  // File
+  fileName    String       @map("file_name")
+  fileUrl     String?      @map("file_url")
+  fileSize    Int?         @map("file_size")
+  
+  // Status
+  status      String       @default("pending") // pending, processing, completed, failed
+  error       String?
+  
+  // Timestamps
+  requestedAt DateTime     @default(now()) @map("requested_at")
+  completedAt DateTime?    @map("completed_at")
+  expiresAt   DateTime?    @map("expires_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@map("exports")
+}
+
+// ============================================================================
+// DATA COLLECTION
+// ============================================================================
+
+model CollectionJob {
+  id          String     @id @default(cuid())
+  source      DataSource
+  
+  // Job details
+  jobType     String     @map("job_type") // full, incremental, realtime
+  region      String?
+  category    NicheCategory?
+  
+  // Status
+  status      String     @default("pending") // pending, running, completed, failed
+  progress    Int        @default(0)
+  
+  // Results
+  trendsFound Int        @default(0) @map("trends_found")
+  trendsUpdated Int      @default(0) @map("trends_updated")
+  errors      Json?
+  
+  // Timestamps
+  startedAt   DateTime?  @map("started_at")
+  completedAt DateTime?  @map("completed_at")
+  createdAt   DateTime   @default(now()) @map("created_at")
+
+  @@index([source])
+  @@index([status])
+  @@index([createdAt])
+  @@map("collection_jobs")
+}
+
+model ApiRateLimit {
+  id            String     @id @default(cuid())
+  source        DataSource @unique
+  
+  // Limits
+  requestsToday Int        @default(0) @map("requests_today")
+  dailyLimit    Int        @map("daily_limit")
+  lastRequest   DateTime?  @map("last_request")
+  
+  // Reset
+  resetAt       DateTime   @map("reset_at")
+  
+  // Timestamps
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+
+  @@map("api_rate_limits")
+}
+
+// ============================================================================
+// SYSTEM
+// ============================================================================
+
+model SystemConfig {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("system_config")
+}
+
+model GlobalTrendingCache {
+  id          String   @id @default(cuid())
+  region      String   @default("worldwide")
+  
+  // Cached data
+  trends      Json     // Array of trend summaries
+  trendCount  Int      @map("trend_count")
+  
+  // Timestamps
+  cachedAt    DateTime @default(now()) @map("cached_at")
+  expiresAt   DateTime @map("expires_at")
+
+  @@unique([region])
+  @@index([expiresAt])
+  @@map("global_trending_cache")
+}
