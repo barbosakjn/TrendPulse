@@ -46,7 +46,7 @@ export interface User {
 // CONFIGURATION
 // ============================================================================
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE_URL = '';
 
 // ============================================================================
 // TOKEN STORAGE
@@ -188,7 +188,7 @@ class ApiClient {
 
           try {
             // Attempt to refresh token
-            const response = await axios.post(`${API_BASE_URL}/api/auth/refresh`, {
+            const response = await axios.post('/api/auth/refresh', {
               refresh_token: refreshToken,
             });
 
