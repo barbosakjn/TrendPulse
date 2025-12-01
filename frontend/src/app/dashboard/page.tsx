@@ -540,6 +540,20 @@ export default function DashboardPage() {
                 </button>
                 
                 <button 
+                  onClick={() => handleQuickAction('google')}
+                  disabled={loading.google}
+                  className="w-full flex items-center gap-3 p-4 bg-slate-800/50 hover:bg-slate-800 rounded-xl transition-all border border-slate-700/50 group disabled:opacity-50"
+                >
+                  {loading.google ? (
+                    <Loader2 className="w-5 h-5 text-blue-400 animate-spin" />
+                  ) : (
+                    <Globe className="w-5 h-5 text-blue-400" />
+                  )}
+                  <span className="font-medium text-slate-300">Google Trends</span>
+                  <ChevronRight className="w-4 h-4 text-slate-500 ml-auto group-hover:translate-x-1 transition-transform" />
+                </button>
+
+                <button 
                   onClick={() => handleQuickAction('youtube')}
                   disabled={loading.youtube}
                   className="w-full flex items-center gap-3 p-4 bg-slate-800/50 hover:bg-slate-800 rounded-xl transition-all border border-slate-700/50 group disabled:opacity-50"
@@ -549,12 +563,28 @@ export default function DashboardPage() {
                   ) : (
                     <Youtube className="w-5 h-5 text-red-400" />
                   )}
-                  <span className="font-medium text-slate-300">YouTube Trends</span>
+                  <span className="font-medium text-slate-300">YouTube</span>
+                  <ChevronRight className="w-4 h-4 text-slate-500 ml-auto group-hover:translate-x-1 transition-transform" />
+                </button>
+
+                <button 
+                  onClick={() => handleQuickAction('twitter')}
+                  disabled={loading.twitter}
+                  className="w-full flex items-center gap-3 p-4 bg-slate-800/50 hover:bg-slate-800 rounded-xl transition-all border border-slate-700/50 group disabled:opacity-50"
+                >
+                  {loading.twitter ? (
+                    <Loader2 className="w-5 h-5 text-slate-200 animate-spin" />
+                  ) : (
+                    <svg className="w-5 h-5 text-slate-200" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                    </svg>
+                  )}
+                  <span className="font-medium text-slate-300">X/Twitter</span>
                   <ChevronRight className="w-4 h-4 text-slate-500 ml-auto group-hover:translate-x-1 transition-transform" />
                 </button>
                 
                 <button 
-                  onClick={() => handleQuickAction('reddit', 'technology')}
+                  onClick={() => handleQuickAction('reddit')}
                   disabled={loading.reddit}
                   className="w-full flex items-center gap-3 p-4 bg-slate-800/50 hover:bg-slate-800 rounded-xl transition-all border border-slate-700/50 group disabled:opacity-50"
                 >
@@ -563,12 +593,12 @@ export default function DashboardPage() {
                   ) : (
                     <MessageSquare className="w-5 h-5 text-orange-400" />
                   )}
-                  <span className="font-medium text-slate-300">Reddit Tech</span>
+                  <span className="font-medium text-slate-300">Reddit</span>
                   <ChevronRight className="w-4 h-4 text-slate-500 ml-auto group-hover:translate-x-1 transition-transform" />
                 </button>
 
                 <button 
-                  onClick={() => handleQuickAction('exa', 'AI startup trends 2024')}
+                  onClick={() => handleQuickAction('exa')}
                   disabled={loading.exa}
                   className="w-full flex items-center gap-3 p-4 bg-slate-800/50 hover:bg-slate-800 rounded-xl transition-all border border-slate-700/50 group disabled:opacity-50"
                 >
