@@ -13,22 +13,19 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 try:
-    from twikit import Client
+    from twikit import Client, Capsolver
     TWIKIT_AVAILABLE = True
-except ImportError:
-    TWIKIT_AVAILABLE = False
-    logger.warning("Twikit not installed. Twitter features will be disabled.")
-
-CAPSOLVER_AVAILABLE = False
-try:
-    from twikit.twikit_async.capsolver import Capsolver
     CAPSOLVER_AVAILABLE = True
 except ImportError:
     try:
-        from twikit.capsolver import Capsolver
-        CAPSOLVER_AVAILABLE = True
+        from twikit import Client
+        TWIKIT_AVAILABLE = True
+        CAPSOLVER_AVAILABLE = False
+        logger.info("Capsolver not available in twikit")
     except ImportError:
-        logger.info("Capsolver not available for Twikit")
+        TWIKIT_AVAILABLE = False
+        CAPSOLVER_AVAILABLE = False
+        logger.warning("Twikit not installed. Twitter features will be disabled.")
 
 USER_AGENTS = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -47,12 +44,17 @@ class TwitterService:
         self.username = settings.TWITTER_USERNAME
         self.email = settings.TWITTER_EMAIL
         self.password = settings.TWITTER_PASSWORD
-        self.capsolver_api_key = getattr(settings, 'CAPSOLVER_API_KEY', None) or os.getenv('CAPSOLVER_API_KEY')
+        self.capsolver_api_key = settings.CAPSOLVER_API_KEY
         self.client = None
         self.logged_in = False
         self.cookies_file = "/tmp/twitter_cookies.json"
         self.login_attempts = 0
         self.max_login_attempts = 3
+        
+        if self.capsolver_api_key:
+            logger.info(f"TwitterService initialized with Capsolver (key length: {len(self.capsolver_api_key)})")
+        else:
+            logger.warning("TwitterService initialized WITHOUT Capsolver - Twitter may be blocked")
 
     def _is_configured(self) -> bool:
         """Check if Twitter credentials are configured."""
@@ -75,14 +77,16 @@ class TwitterService:
             user_agent = random.choice(USER_AGENTS)
             
             if CAPSOLVER_AVAILABLE and self.capsolver_api_key:
-                logger.info("Using Capsolver for Cloudflare bypass")
+                logger.info(f"Initializing Capsolver with API key (length: {len(self.capsolver_api_key)})")
                 capsolver = Capsolver(api_key=self.capsolver_api_key)
                 self.client = Client(
                     language='en-US',
                     user_agent=user_agent,
                     captcha_solver=capsolver
                 )
+                logger.info("Capsolver enabled for Cloudflare bypass")
             else:
+                logger.warning(f"Capsolver NOT enabled - CAPSOLVER_AVAILABLE: {CAPSOLVER_AVAILABLE}, has_key: {bool(self.capsolver_api_key)}")
                 self.client = Client(
                     language='en-US',
                     user_agent=user_agent

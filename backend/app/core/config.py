@@ -58,6 +58,7 @@ class Settings(BaseSettings):
     TWITTER_USERNAME: Optional[str] = None
     TWITTER_EMAIL: Optional[str] = None
     TWITTER_PASSWORD: Optional[str] = None
+    CAPSOLVER_API_KEY: Optional[str] = None
 
     # OAuth
     GOOGLE_CLIENT_ID: Optional[str] = None
