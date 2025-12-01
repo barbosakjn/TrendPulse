@@ -6,6 +6,7 @@ from datetime import datetime
 import logging
 import asyncio
 import os
+import random
 
 from app.core.config import settings
 
@@ -18,6 +19,25 @@ except ImportError:
     TWIKIT_AVAILABLE = False
     logger.warning("Twikit not installed. Twitter features will be disabled.")
 
+CAPSOLVER_AVAILABLE = False
+try:
+    from twikit.twikit_async.capsolver import Capsolver
+    CAPSOLVER_AVAILABLE = True
+except ImportError:
+    try:
+        from twikit.capsolver import Capsolver
+        CAPSOLVER_AVAILABLE = True
+    except ImportError:
+        logger.info("Capsolver not available for Twikit")
+
+USER_AGENTS = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
+]
+
 
 class TwitterService:
     """Service for interacting with Twitter/X using Twikit."""
@@ -27,9 +47,12 @@ class TwitterService:
         self.username = settings.TWITTER_USERNAME
         self.email = settings.TWITTER_EMAIL
         self.password = settings.TWITTER_PASSWORD
+        self.capsolver_api_key = getattr(settings, 'CAPSOLVER_API_KEY', None) or os.getenv('CAPSOLVER_API_KEY')
         self.client = None
         self.logged_in = False
         self.cookies_file = "/tmp/twitter_cookies.json"
+        self.login_attempts = 0
+        self.max_login_attempts = 3
 
     def _is_configured(self) -> bool:
         """Check if Twitter credentials are configured."""
@@ -49,7 +72,21 @@ class TwitterService:
             return True
 
         try:
-            self.client = Client('en-US')
+            user_agent = random.choice(USER_AGENTS)
+            
+            if CAPSOLVER_AVAILABLE and self.capsolver_api_key:
+                logger.info("Using Capsolver for Cloudflare bypass")
+                capsolver = Capsolver(api_key=self.capsolver_api_key)
+                self.client = Client(
+                    language='en-US',
+                    user_agent=user_agent,
+                    captcha_solver=capsolver
+                )
+            else:
+                self.client = Client(
+                    language='en-US',
+                    user_agent=user_agent
+                )
             
             if os.path.exists(self.cookies_file):
                 try:
@@ -58,21 +95,38 @@ class TwitterService:
                     logger.info("Loaded Twitter session from cookies")
                     return True
                 except Exception as e:
-                    logger.warning(f"Could not load cookies: {e}")
+                    logger.warning(f"Could not load cookies, will try fresh login: {e}")
+                    try:
+                        os.remove(self.cookies_file)
+                    except:
+                        pass
+
+            await asyncio.sleep(random.uniform(1, 3))
+            
+            self.login_attempts += 1
+            logger.info(f"Attempting Twitter login (attempt {self.login_attempts})")
 
             await self.client.login(
                 auth_info_1=self.username,
                 auth_info_2=self.email,
                 password=self.password
             )
+            
             self.client.save_cookies(self.cookies_file)
             self.logged_in = True
-            logger.info("Successfully logged in to Twitter")
+            self.login_attempts = 0
+            logger.info("Successfully logged in to Twitter and saved cookies")
             return True
 
         except Exception as e:
-            logger.error(f"Failed to login to Twitter: {str(e)}")
+            error_msg = str(e)
+            logger.error(f"Failed to login to Twitter: {error_msg}")
+            
+            if 'Cloudflare' in error_msg or '403' in error_msg or 'blocked' in error_msg.lower():
+                logger.error("Cloudflare is blocking the request. Consider using Capsolver or a residential proxy.")
+            
             self.logged_in = False
+            self.client = None
             return False
 
     async def search_tweets(
@@ -116,11 +170,15 @@ class TwitterService:
 
         try:
             if not await self._ensure_logged_in():
+                cloudflare_msg = ""
+                if not self.capsolver_api_key:
+                    cloudflare_msg = " Twitter is blocking access from cloud servers. You can add a CAPSOLVER_API_KEY to bypass this (~$0.001 per request)."
+                
                 return {
                     "success": False,
                     "query": query,
                     "error": "Login failed",
-                    "message": "Could not login to Twitter. Please check your credentials.",
+                    "message": f"Could not login to Twitter.{cloudflare_msg}",
                     "tweets": [],
                     "count": 0,
                     "timestamp": datetime.utcnow().isoformat()
@@ -128,6 +186,8 @@ class TwitterService:
 
             logger.info(f"Searching Twitter for: {query}")
 
+            await asyncio.sleep(random.uniform(0.5, 1.5))
+            
             tweets_result = await self.client.search_tweet(query, search_type)
             
             tweets = []
