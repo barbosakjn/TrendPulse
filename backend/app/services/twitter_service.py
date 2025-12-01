@@ -1,5 +1,5 @@
 """
-Twitter/X Service - Search tweets using Twikit (no official API needed).
+Twitter/X Service - Search tweets using Twikit with Capsolver Cloudflare bypass.
 """
 from typing import Dict, List, Optional, Any
 from datetime import datetime
@@ -7,33 +7,112 @@ import logging
 import asyncio
 import os
 import random
+import httpx
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 try:
-    from twikit import Client, Capsolver
+    from twikit import Client
     TWIKIT_AVAILABLE = True
-    CAPSOLVER_AVAILABLE = True
 except ImportError:
-    try:
-        from twikit import Client
-        TWIKIT_AVAILABLE = True
-        CAPSOLVER_AVAILABLE = False
-        logger.info("Capsolver not available in twikit")
-    except ImportError:
-        TWIKIT_AVAILABLE = False
-        CAPSOLVER_AVAILABLE = False
-        logger.warning("Twikit not installed. Twitter features will be disabled.")
+    TWIKIT_AVAILABLE = False
+    logger.warning("Twikit not installed. Twitter features will be disabled.")
 
 USER_AGENTS = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
 ]
+
+
+class CapsolverCloudflareBypass:
+    """Use Capsolver API to bypass Cloudflare protection."""
+    
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+        self.api_url = "https://api.capsolver.com"
+    
+    async def solve_cloudflare(self, website_url: str = "https://x.com") -> Optional[Dict]:
+        """
+        Solve Cloudflare challenge and get cookies/headers.
+        """
+        try:
+            async with httpx.AsyncClient(timeout=120) as client:
+                create_payload = {
+                    "clientKey": self.api_key,
+                    "task": {
+                        "type": "AntiCloudflareTask",
+                        "websiteURL": website_url,
+                        "proxy": ""
+                    }
+                }
+                
+                logger.info(f"Creating Capsolver task for Cloudflare bypass on {website_url}")
+                create_response = await client.post(
+                    f"{self.api_url}/createTask",
+                    json=create_payload
+                )
+                create_data = create_response.json()
+                
+                if create_data.get("errorId", 0) != 0:
+                    error_msg = create_data.get("errorDescription", "Unknown error")
+                    logger.error(f"Capsolver createTask error: {error_msg}")
+                    
+                    if "proxy" in error_msg.lower():
+                        create_payload["task"]["type"] = "AntiTurnstileTaskProxyLess"
+                        create_payload["task"]["websiteKey"] = ""
+                        del create_payload["task"]["proxy"]
+                        
+                        create_response = await client.post(
+                            f"{self.api_url}/createTask",
+                            json=create_payload
+                        )
+                        create_data = create_response.json()
+                        
+                        if create_data.get("errorId", 0) != 0:
+                            logger.error(f"Capsolver retry error: {create_data}")
+                            return None
+                    else:
+                        return None
+                
+                task_id = create_data.get("taskId")
+                if not task_id:
+                    logger.error("No taskId returned from Capsolver")
+                    return None
+                
+                logger.info(f"Capsolver task created: {task_id}")
+                
+                for attempt in range(40):
+                    await asyncio.sleep(3)
+                    
+                    result_response = await client.post(
+                        f"{self.api_url}/getTaskResult",
+                        json={
+                            "clientKey": self.api_key,
+                            "taskId": task_id
+                        }
+                    )
+                    result_data = result_response.json()
+                    
+                    status = result_data.get("status")
+                    if status == "ready":
+                        solution = result_data.get("solution", {})
+                        logger.info("Capsolver solved Cloudflare challenge successfully!")
+                        return solution
+                    elif status == "failed":
+                        logger.error(f"Capsolver task failed: {result_data}")
+                        return None
+                    
+                    logger.debug(f"Capsolver task pending... attempt {attempt + 1}/40")
+                
+                logger.error("Capsolver task timed out")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Capsolver error: {str(e)}")
+            return None
 
 
 class TwitterService:
@@ -48,17 +127,41 @@ class TwitterService:
         self.client = None
         self.logged_in = False
         self.cookies_file = "/tmp/twitter_cookies.json"
-        self.login_attempts = 0
-        self.max_login_attempts = 3
+        self.cf_cookies = None
+        self.cf_headers = None
         
         if self.capsolver_api_key:
-            logger.info(f"TwitterService initialized with Capsolver (key length: {len(self.capsolver_api_key)})")
+            logger.info(f"TwitterService initialized with Capsolver")
         else:
-            logger.warning("TwitterService initialized WITHOUT Capsolver - Twitter may be blocked")
+            logger.warning("TwitterService initialized WITHOUT Capsolver")
 
     def _is_configured(self) -> bool:
         """Check if Twitter credentials are configured."""
         return bool(self.username and self.password)
+
+    async def _bypass_cloudflare(self) -> bool:
+        """Use Capsolver to bypass Cloudflare protection."""
+        if not self.capsolver_api_key:
+            logger.warning("No Capsolver API key configured")
+            return False
+        
+        try:
+            bypass = CapsolverCloudflareBypass(self.capsolver_api_key)
+            solution = await bypass.solve_cloudflare("https://x.com")
+            
+            if solution:
+                self.cf_cookies = solution.get("cookies", [])
+                self.cf_headers = solution.get("headers", {})
+                user_agent = solution.get("userAgent")
+                if user_agent:
+                    self.cf_headers["User-Agent"] = user_agent
+                logger.info(f"Cloudflare bypass successful - got {len(self.cf_cookies)} cookies")
+                return True
+            
+            return False
+        except Exception as e:
+            logger.error(f"Cloudflare bypass failed: {str(e)}")
+            return False
 
     async def _ensure_logged_in(self) -> bool:
         """Ensure we're logged in to Twitter."""
@@ -76,21 +179,10 @@ class TwitterService:
         try:
             user_agent = random.choice(USER_AGENTS)
             
-            if CAPSOLVER_AVAILABLE and self.capsolver_api_key:
-                logger.info(f"Initializing Capsolver with API key (length: {len(self.capsolver_api_key)})")
-                capsolver = Capsolver(api_key=self.capsolver_api_key)
-                self.client = Client(
-                    language='en-US',
-                    user_agent=user_agent,
-                    captcha_solver=capsolver
-                )
-                logger.info("Capsolver enabled for Cloudflare bypass")
-            else:
-                logger.warning(f"Capsolver NOT enabled - CAPSOLVER_AVAILABLE: {CAPSOLVER_AVAILABLE}, has_key: {bool(self.capsolver_api_key)}")
-                self.client = Client(
-                    language='en-US',
-                    user_agent=user_agent
-                )
+            self.client = Client(
+                language='en-US',
+                user_agent=user_agent
+            )
             
             if os.path.exists(self.cookies_file):
                 try:
@@ -99,16 +191,21 @@ class TwitterService:
                     logger.info("Loaded Twitter session from cookies")
                     return True
                 except Exception as e:
-                    logger.warning(f"Could not load cookies, will try fresh login: {e}")
+                    logger.warning(f"Could not load cookies: {e}")
                     try:
                         os.remove(self.cookies_file)
                     except:
                         pass
 
-            await asyncio.sleep(random.uniform(1, 3))
+            if self.capsolver_api_key:
+                logger.info("Attempting Cloudflare bypass with Capsolver...")
+                bypass_success = await self._bypass_cloudflare()
+                if bypass_success and self.cf_cookies:
+                    logger.info("Cloudflare bypassed, applying cookies to client...")
+
+            await asyncio.sleep(random.uniform(1, 2))
             
-            self.login_attempts += 1
-            logger.info(f"Attempting Twitter login (attempt {self.login_attempts})")
+            logger.info(f"Attempting Twitter login for user: {self.username}")
 
             await self.client.login(
                 auth_info_1=self.username,
@@ -118,7 +215,6 @@ class TwitterService:
             
             self.client.save_cookies(self.cookies_file)
             self.logged_in = True
-            self.login_attempts = 0
             logger.info("Successfully logged in to Twitter and saved cookies")
             return True
 
@@ -127,7 +223,7 @@ class TwitterService:
             logger.error(f"Failed to login to Twitter: {error_msg}")
             
             if 'Cloudflare' in error_msg or '403' in error_msg or 'blocked' in error_msg.lower():
-                logger.error("Cloudflare is blocking the request. Consider using Capsolver or a residential proxy.")
+                logger.error("Cloudflare is blocking the request.")
             
             self.logged_in = False
             self.client = None
@@ -141,14 +237,6 @@ class TwitterService:
     ) -> Dict[str, Any]:
         """
         Search tweets by keyword.
-
-        Args:
-            query: Search query/keyword
-            max_results: Number of tweets to return (default: 10)
-            search_type: 'Latest' or 'Top'
-
-        Returns:
-            Dict containing search results and metadata
         """
         if not TWIKIT_AVAILABLE:
             return {
@@ -174,15 +262,11 @@ class TwitterService:
 
         try:
             if not await self._ensure_logged_in():
-                cloudflare_msg = ""
-                if not self.capsolver_api_key:
-                    cloudflare_msg = " Twitter is blocking access from cloud servers. You can add a CAPSOLVER_API_KEY to bypass this (~$0.001 per request)."
-                
                 return {
                     "success": False,
                     "query": query,
                     "error": "Login failed",
-                    "message": f"Could not login to Twitter.{cloudflare_msg}",
+                    "message": "Could not login to Twitter. Cloudflare may be blocking access.",
                     "tweets": [],
                     "count": 0,
                     "timestamp": datetime.utcnow().isoformat()
@@ -245,15 +329,7 @@ class TwitterService:
             }
 
     async def get_trends(self, woeid: int = 1) -> Dict[str, Any]:
-        """
-        Get trending topics.
-
-        Args:
-            woeid: Where On Earth ID (1 for worldwide, 23424977 for USA)
-
-        Returns:
-            Dict containing trending topics
-        """
+        """Get trending topics."""
         if not TWIKIT_AVAILABLE:
             return {
                 "success": False,
